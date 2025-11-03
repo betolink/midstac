@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "midstac": {
+      "command": "python",
+      "args": [
+        "-m",
+        "midstac.server"
+      ],
+      "env": {
+        "EARTHDATA_TOKEN"": "your_token_here",
+      }
+    }
+  }
+}
