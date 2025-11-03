@@ -10,8 +10,8 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "GLP-3.0-or-later"}
 authors = [
-    {name = "betolink"}
-    {name = "jhkennedy"}
+    {name = "betolink"},
+    {name = "jhkennedy"},
     {name = "asteiker"}
 ]
 dependencies = [
