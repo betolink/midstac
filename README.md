@@ -28,11 +28,6 @@ export EARTHDATA_TOKEN="your_token"
 
 Or create a `.env` file.
 
-```bash
-cp .env.example .env
-# Edit .env with your credentials
-```
-
 ### MCP Client Configuration
 
 To use midstac with an MCP client (like Claude Desktop), add to your MCP configuration file:
@@ -45,8 +40,8 @@ To use midstac with an MCP client (like Claude Desktop), add to your MCP configu
       "args": ["-m", "midstac.server"],
       "env": {
         "EARTHDATA_TOKEN": "your_token",
-        "IMGBB_API_KEY": "your_imgbb_key" # to persist plots
-        "GEOAPI_KEY": "your_geoapi_key" # for geocoding locations
+        "IMGBB_API_KEY": "your_imgbb_key",
+        "GEOAPI_KEY": "your_geoapi_key"
       }
     }
   }
@@ -54,6 +49,12 @@ To use midstac with an MCP client (like Claude Desktop), add to your MCP configu
 ```
 
 See `mcp-config.example.json` for a complete example.
+
+For the demo, we use OpenWeb UI, we can start it using the docker compose file:
+
+```bash
+docker-compose -f docker-compose.yml up
+```
 
 ## Usage
 
@@ -145,4 +146,3 @@ print(f"Found {len(items)} items")
 ## License
 
 GPL-3.0 license
-

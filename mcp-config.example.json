@@ -8,6 +8,8 @@
       ],
       "env": {
         "EARTHDATA_TOKEN"": "your_token_here",
+        "IMGBB_API_KEY": "your_imgbb_key",
+        "GEOAPI_KEY": "your_geoapi_key"
       }
     }
   }
