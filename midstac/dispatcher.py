@@ -214,8 +214,6 @@ class QueryDispatcher:
             if datetime:
                 search_params["datetime"] = datetime
 
-            search_params["limit"] = limit
-
             search_params.update(kwargs)
             logger.info(f"STAC search parameters: {search_params}")
 
@@ -230,7 +228,7 @@ class QueryDispatcher:
 
             return collections
         except Exception as e:
-            print(f"STAC search error: {e}")
+            logger.info(f"STAC search error: {e}")
             return []
 
     def dispatch_collection_query(
@@ -298,7 +296,7 @@ class QueryDispatcher:
                 for keyword in keywords:
                     results_stac.extend(
                         self.search_stac_collections(
-                            keyword=keyword, bbox=bbox, datetime=datetime_str
+                            keywords=keyword, bbox=bbox, datetime=datetime_str, limit=max_results
                         )
                     )
             except Exception as e:
