@@ -3,18 +3,25 @@ import logging
 import random
 import string
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import aiofiles
 from fastmcp import FastMCP
-from pydantic import BaseModel
 
 from .dispatcher import QueryDispatcher
 from .extractor import SpatiotemporalExtractor
+from .models import DatasetSummary
 from .virtual_dataset import get_smap_dataset, init_cluster, plot_seasonal_smap_area
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+
+
+class QueryError(Exception):
+    """Raised when query operations fail"""
+
+    pass
+
 
 mcp = FastMCP("midstac")
 
@@ -23,36 +30,14 @@ dispatcher = QueryDispatcher()
 docs_path = Path("./resources/earthaccess_api_full.md").resolve()
 
 
-class Link(BaseModel):
-    url: str
-    rel: str
-
-
-class SpatiotemporalParameters(BaseModel):
-    location: Optional[str] = None
-    coordinates: Optional[tuple[float, float]] = None
-    bbox: Optional[tuple[float, float, float, float]] = None
-    temporal: Optional[dict] = None
-    query: str
-
-
-class DatasetSummary(BaseModel):
-    source: str
-    id: str
-    doi: Optional[str] = None
-    title: str
-    summary: str
-    links: List[Link] = []
-
-
 @mcp.tool()
 def query_earth_collections(
     query: str,
     keywords: list[str],
-    bbox: Optional[list[float]] = [-180.0, -90.0, 180.0, 90.0],
+    bbox: Optional[list[float]] = None,
     max_results: int = 10,
     source: str = "all",
-) -> List[DatasetSummary]:
+) -> list[DatasetSummary]:
     """
     ### Query Earth observation datasets using natural language
 
@@ -85,19 +70,45 @@ def query_earth_collections(
     - summary (dataset summary)
     - links (urls to data and documentation)
     """
-    params = extractor.extract_parameters(query)
-    logger.info(f"Extracted parameters: {params}")
+    # Input validation
+    if bbox is None:
+        bbox = [-180.0, -90.0, 180.0, 90.0]
+    if not query or not query.strip():
+        raise ValueError("Query cannot be empty")
 
-    results = dispatcher.dispatch_collection_query(params, bbox, keywords, max_results, source)
+    if not keywords:
+        raise ValueError("Keywords cannot be empty")
 
-    return results
+    if bbox and len(bbox) != 4:
+        raise ValueError("Bounding box must have exactly 4 coordinates")
+
+    if bbox and (
+        not all(-180 <= coord <= 180 for coord in bbox[:2]) or not all(-90 <= coord <= 90 for coord in bbox[2:])
+    ):
+        raise ValueError("Invalid bounding box coordinates")
+
+    if max_results <= 0 or max_results > 100:
+        raise ValueError("max_results must be between 1 and 100")
+
+    if source not in ["all", "nasa", "stac", "maap", "esa"]:
+        raise ValueError("source must be one of: all, nasa, stac, maap, esa")
+
+    try:
+        params = extractor.extract_parameters(query)
+        logger.info(f"Extracted parameters: {params}")
+
+        results = dispatcher.dispatch_collection_query(params, bbox, keywords, max_results, source)
+        return results
+    except Exception as e:
+        logger.error(f"Query failed: {e}")
+        raise QueryError(f"Earth data query failed: {e}") from e
 
 
 @mcp.tool()
 async def earthaccess_api() -> str:
     """Returns earthaccess API documentation."""
     try:
-        async with aiofiles.open("./midstac/resources/earthaccess_api_full.md", mode="r") as f:
+        async with aiofiles.open("./midstac/resources/earthaccess_api_full.md") as f:
             content = await f.read()
         return content
     except Exception as e:
@@ -113,10 +124,11 @@ async def get_companion_image(topic: str = "heatmap") -> list[str]:
     matches = []
     topic_lower = topic.lower().strip()
 
+    # Determine if the topic is a single word or a multi-word phrase
     is_phrase = len(topic_lower.split()) > 1
 
     try:
-        async with aiofiles.open("./midstac/resources/xkcd.ndjson", mode="r") as f:
+        async with aiofiles.open("./midstac/resources/xkcd.ndjson") as f:
             async for line in f:
                 if not line.strip():
                     continue
@@ -126,12 +138,12 @@ async def get_companion_image(topic: str = "heatmap") -> list[str]:
                     alt = item.get("alt", "").lower()
 
                     if is_phrase:
+                        # Multi-word phrase: substring match
                         if topic_lower in transcript or topic_lower in alt:
                             matches.append(f"![XKCD image {item.get('num')}]({item.get('img')})")
                     else:
-                        words = [
-                            w.strip(string.punctuation) for w in transcript.split() + alt.split()
-                        ]
+                        # Single word: split and strip punctuation for whole-word match
+                        words = [w.strip(string.punctuation) for w in transcript.split() + alt.split()]
                         if topic_lower in words:
                             matches.append(f"![XKCD image {item.get('num')}]({item.get('img')})")
 
@@ -199,7 +211,7 @@ def plot_smap_area(
             ds, varname, lat_min, lat_max, lon_min, lon_max, month_start, month_end, year, operation
         )
 
-        return image_url
+        return image_url if image_url else "Failed to generate plot."
     else:
         return "Dataset not available."
 
@@ -208,7 +220,7 @@ def plot_smap_area(
 async def search_instructions() -> str:
     """Returns instruction on how an agent should use midstac"""
     try:
-        async with aiofiles.open("./midstac/resources/agent.md", mode="r") as f:
+        async with aiofiles.open("./midstac/resources/agent.md") as f:
             content = await f.read()
         return content
     except Exception as e:
@@ -219,7 +231,7 @@ async def search_instructions() -> str:
 async def earthaccess_docs() -> str:
     """Returns earthaccess API documentation."""
     try:
-        async with aiofiles.open("./midstac/resources/earthaccess_api_full.md", mode="r") as f:
+        async with aiofiles.open("./midstac/resources/earthaccess_api_full.md") as f:
             content = await f.read()
         return content
     except Exception as e:

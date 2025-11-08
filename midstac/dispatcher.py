@@ -2,18 +2,35 @@
 Query dispatcher for earthaccess and pystac_client
 """
 
-from typing import Any, Dict, List, Optional
-
-import earthaccess
-from pydantic import BaseModel
-from pystac_client import Client
-
-from urllib.parse import urlparse
-
 import logging
 import traceback
+from typing import Any, Optional
+from urllib.parse import urlparse
+
+import earthaccess
+from pystac_client import Client
+
+from .models import DatasetSummary, Link
 
 logger = logging.getLogger(__name__)
+
+
+class DatasetFormattingError(Exception):
+    """Raised when dataset formatting fails"""
+
+    pass
+
+
+class AuthenticationError(Exception):
+    """Raised when authentication fails"""
+
+    pass
+
+
+class SearchError(Exception):
+    """Raised when search operations fail"""
+
+    pass
 
 
 def is_valid_url(url: str) -> bool:
@@ -24,26 +41,12 @@ def is_valid_url(url: str) -> bool:
         return False
 
 
-class Link(BaseModel):
-    url: str
-    rel: str
-
-
-class DatasetSummary(BaseModel):
-    source: str
-    id: str
-    doi: Optional[str] = None
-    title: str
-    summary: str
-    links: List[Link] = []
-
-
 def format_nasa_dataset(result) -> DatasetSummary:
     try:
         links = []
-        for l in result.get_umm("RelatedUrls") or []:
-            if "URL" in l and "Type" in l:
-                links.append(Link(url=l["URL"], rel=l["Type"]))
+        for link in result.get_umm("RelatedUrls") or []:
+            if "URL" in link and "Type" in link:
+                links.append(Link(url=link["URL"], rel=link["Type"]))
 
         summary_text = result.abstract()
         if "DOI" in result.get_umm("DOI"):
@@ -62,7 +65,7 @@ def format_nasa_dataset(result) -> DatasetSummary:
 
     except Exception as e:
         logger.error(f"Failed to format NASA dataset {result}: {e}\n{traceback.format_exc()}")
-        return {}
+        raise DatasetFormattingError(f"Could not format NASA dataset: {e}") from e
 
 
 def format_stac_dataset(result) -> DatasetSummary:
@@ -76,11 +79,7 @@ def format_stac_dataset(result) -> DatasetSummary:
         id=result.id,
         title=result.title,
         summary=result.description[0:500],
-        links=[
-            Link(url=link.target, rel=link.rel)
-            for link in result.links
-            if is_valid_url(link.target)
-        ],
+        links=[Link(url=link.target, rel=link.rel) for link in result.links if is_valid_url(link.target)],
     )
 
 
@@ -89,6 +88,7 @@ class QueryDispatcher:
 
     # Common STAC catalog URLs
     STAC_CATALOGS = {
+        "nasa": "https://cmr.earthdata.nasa.gov/stac",
         "earth_search": "https://earth-search.aws.element84.com/v1",
         "planetary_computer": "https://planetarycomputer.microsoft.com/api/stac/v1",
         "maap": "https://stac.maap-project.org/",
@@ -116,11 +116,11 @@ class QueryDispatcher:
     def search_earthaccess_collections(
         self,
         keyword: Optional[str] = None,
-        bbox: Optional[tuple] = None,
+        bbox: Optional[list[float]] = None,
         temporal: Optional[tuple] = None,
         count: Optional[int] = 10,
         **kwargs,
-    ) -> List[DatasetSummary]:
+    ) -> list[DatasetSummary]:
         """
         Search for granules using earthaccess
 
@@ -172,11 +172,11 @@ class QueryDispatcher:
         self,
         catalog_url: Optional[str] = STAC_CATALOGS["maap"],
         keywords: Optional[list[str]] = None,
-        bbox: Optional[tuple] = None,
+        bbox: Optional[list[float]] = None,
         datetime: Optional[str] = None,
         limit: int = 10,
         **kwargs,
-    ) -> List[DatasetSummary]:
+    ) -> list[DatasetSummary]:
         """
         Search STAC catalog using pystac_client
 
@@ -201,11 +201,7 @@ class QueryDispatcher:
             search_params = {}
 
             if keywords:
-                keyword_query = (
-                    " or ".join(keywords.split())
-                    if isinstance(keywords, str)
-                    else " or ".join(keywords)
-                )
+                keyword_query = " or ".join(keywords.split()) if isinstance(keywords, str) else " or ".join(keywords)
                 search_params["q"] = keyword_query
 
             if bbox:
@@ -233,7 +229,7 @@ class QueryDispatcher:
 
     def dispatch_collection_query(
         self,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         bbox: Optional[list[float]],
         keywords: list[str],
         max_results: int = 10,
@@ -260,7 +256,7 @@ class QueryDispatcher:
         temporal = params.get("temporal", {})
 
         if not keywords:
-            keywords = params.get("query").split()
+            keywords = params.get("query", "").split()
 
         temporal_tuple = None
         datetime_str = None
@@ -296,7 +292,7 @@ class QueryDispatcher:
                 for keyword in keywords:
                     results_stac.extend(
                         self.search_stac_collections(
-                            keywords=keyword, bbox=bbox, datetime=datetime_str, limit=max_results
+                            keywords=[keyword], bbox=bbox, datetime=datetime_str, limit=max_results
                         )
                     )
             except Exception as e:

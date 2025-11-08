@@ -16,6 +16,92 @@ For development:
 pip install -e ".[dev]"
 ```
 
+## Development
+
+### Setting up the Development Environment
+
+#### Using uv (recommended)
+```bash
+# Install uv if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Create and activate virtual environment
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+uv pip install -e ".[dev]"
+```
+
+#### Using pyenv + pip
+```bash
+# Install and set Python version
+pyenv install 3.9
+pyenv local 3.9
+
+# Create and activate virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -e ".[dev]"
+```
+
+#### Using conda
+```bash
+# Create and activate conda environment
+conda create -n midstac python=3.9
+conda activate midstac
+
+# Install dependencies
+pip install -e ".[dev]"
+```
+
+### Running the Development Server
+
+Once your development environment is set up and activated:
+
+```bash
+# Using the dev script (recommended)
+python scripts/dev.py
+
+# Or run directly with mcpo
+mcpo --hot-reload --cors-allow-origins "*" --port 8000 -- midstac
+```
+
+This will start the MCP server on port 8000 with hot reload enabled, allowing you to see changes immediately as you develop.
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run tests with coverage
+pytest --cov=midstac --cov-report=term-missing
+
+# Run specific test categories
+pytest -m unit      # Unit tests only
+pytest -m integration  # Integration tests only
+pytest -m "not slow"  # Skip slow tests
+```
+
+### Code Quality
+
+```bash
+# Lint the code
+ruff check .
+
+# Format the code
+ruff format .
+
+# Type checking
+mypy .
+
+# Run all quality checks
+ruff check . && ruff format . --check && mypy .
+```
+
 ## Configuration
 
 ### NASA Earthdata Credentials

@@ -2,22 +2,15 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import requests
 from dateutil import parser as date_parser
-from pydantic import BaseModel
+
+from .models import SpatiotemporalParameters
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-
-class SpatiotemporalParameters(BaseModel):
-    location: Optional[str] = None
-    coordinates: Optional[tuple[float, float]] = None
-    bbox: Optional[tuple[float, float, float, float]] = None
-    temporal: Optional[dict] = None
-    query: str
 
 
 class SpatiotemporalExtractor:
@@ -81,7 +74,7 @@ class SpatiotemporalExtractor:
                 return match.group(1)
         return None
 
-    def extract_geolocation_bbox(self, location: str) -> Optional[list[float]]:
+    def extract_geolocation_bbox(self, location: str) -> Optional[tuple[float, float, float, float]]:
         """
         Placeholder for geocoding location names to coordinates.
         In a real implementation, this would call a geocoding API.
@@ -99,11 +92,14 @@ class SpatiotemporalExtractor:
         first_feature = data.get("features", [])[0]
         if first_feature:
             bbox = first_feature.get("bbox")
-            return bbox
+            if bbox and len(bbox) == 4:
+                return tuple(bbox)
+            else:
+                return None
         else:
             return None
 
-    def extract_coordinates(self, query: str) -> Optional[Tuple[float, float]]:
+    def extract_coordinates(self, query: str) -> Optional[tuple[float, float]]:
         """
         Extract coordinates (lat, lon) from query
 
@@ -126,7 +122,7 @@ class SpatiotemporalExtractor:
                     continue
         return None
 
-    def extract_bbox(self, query: str) -> Optional[list[float]]:
+    def extract_bbox(self, query: str) -> Optional[tuple[float, float, float, float]]:
         """
         Extract bounding box from query
 
@@ -140,13 +136,18 @@ class SpatiotemporalExtractor:
             match = re.search(pattern, query, re.IGNORECASE)
             if match:
                 try:
-                    coords = [float(match.group(i)) for i in range(1, 5)]
+                    coords = (
+                        float(match.group(1)),
+                        float(match.group(2)),
+                        float(match.group(3)),
+                        float(match.group(4)),
+                    )
                     return coords
                 except (ValueError, IndexError):
                     continue
         return None
 
-    def extract_temporal(self, query: str) -> Optional[Dict[str, str]]:
+    def extract_temporal(self, query: str) -> Optional[dict[str, str]]:
         """
         Extract temporal parameters from query
 
@@ -225,39 +226,27 @@ class SpatiotemporalExtractor:
             query: Natural language query string
 
         Returns:
-            Dictionary containing extracted parameters:
-            - location: str (location name)
-            - coordinates: tuple (lat, lon)
-            - bbox: tuple (min_lon, min_lat, max_lon, max_lat)
-            - temporal: dict (start_date, end_date)
-            - query: str (original query)
+            SpatiotemporalParameters object containing extracted parameters
         """
-        params = {
-            "query": query,
-        }
-
         # Extract location
         location = self.extract_location(query)
-        if location:
-            params["location"] = location
 
         # Extract coordinates
         coords = self.extract_coordinates(query)
-        if coords:
-            params["coordinates"] = coords
 
         # Extract bounding box
         bbox = self.extract_bbox(query)
-        if bbox:
-            params["bbox"] = bbox
 
         # Extract temporal parameters
         temporal = self.extract_temporal(query)
-        if temporal:
-            params["temporal"] = temporal
 
+        # If we have a location but no bbox/coords, try geocoding
         if location and (not bbox and not coords):
-            params["bbox"] = self.extract_geolocation_bbox(location)
-            logger.info(f"Geocoding location: {location}, results in bbox: {params['bbox']}")
+            geocoded_bbox = self.extract_geolocation_bbox(location)
+            if geocoded_bbox:
+                bbox = geocoded_bbox
+                logger.info(f"Geocoding location: {location}, results in bbox: {bbox}")
 
-        return params
+        return SpatiotemporalParameters(
+            query=query, location=location, coordinates=coords, bbox=bbox, temporal=temporal
+        )
